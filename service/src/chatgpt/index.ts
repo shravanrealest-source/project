@@ -69,8 +69,6 @@ async function chatReplyProcess(options: RequestOptions) {
   try {
     const options: SendMessageOptions = { timeoutMs }
 
-    if (isNotEmptyString(systemMessage))
-      options.systemMessage = systemMessage
     options.completionParams = { model, temperature, top_p, presence_penalty: 0, frequency_penalty: 0 }
 
     if (lastContext != null)
@@ -166,6 +164,32 @@ function setupProxy(options: SetProxyOptions) {
       }
     : {}
 
+  // Centralized body modification (Persona + Penalties)
+  const modifyBody = (bodyStr: string) => {
+    try {
+      const body = JSON.parse(bodyStr)
+      const STRICT_PERSONA = 'You are a WhatsApp Marketing Expert. You ONLY provide advice on WhatsApp marketing, bulk messaging, lead generation, and customer engagement. If a user asks about any other topic—including politics, world leaders (like the US President), cooking, or general history—politely decline and state that you are only programmed for WhatsApp Marketing support.'
+      
+      // Force Persona
+      if (body.messages && Array.isArray(body.messages)) {
+        const systemMsg = body.messages.find((m: any) => m.role === 'system')
+        if (systemMsg)
+          systemMsg.content = STRICT_PERSONA
+        else
+          body.messages.unshift({ role: 'system', content: STRICT_PERSONA })
+      }
+
+      // Strip Penalties (Gemini compatibility)
+      if (body.presence_penalty !== undefined) delete body.presence_penalty
+      if (body.frequency_penalty !== undefined) delete body.frequency_penalty
+      
+      return JSON.stringify(body)
+    }
+    catch (e) {
+      return bodyStr
+    }
+  }
+
   if (isNotEmptyString(process.env.SOCKS_PROXY_HOST) && isNotEmptyString(process.env.SOCKS_PROXY_PORT)) {
     const agent = new SocksProxyAgent({
       hostname: process.env.SOCKS_PROXY_HOST,
@@ -174,21 +198,7 @@ function setupProxy(options: SetProxyOptions) {
       password: isNotEmptyString(process.env.SOCKS_PROXY_PASSWORD) ? process.env.SOCKS_PROXY_PASSWORD : undefined,
     })
     options.fetch = (url, opts) => {
-      let finalOpts = opts
-      const isGoogle = url.toString().includes('googleapis.com')
-
-      if (isGoogle && opts?.body) {
-        try {
-          const body = JSON.parse(opts.body.toString())
-          if (body.presence_penalty !== undefined)
-            delete body.presence_penalty
-          if (body.frequency_penalty !== undefined)
-            delete body.frequency_penalty
-          finalOpts = { ...opts, body: JSON.stringify(body) }
-        }
-        catch (e) {}
-      }
-
+      const finalOpts = { ...opts, body: opts?.body ? modifyBody(opts.body.toString()) : opts?.body }
       const merged = { ...finalOpts, headers: { ...(finalOpts as any)?.headers, ...openRouterHeaders } }
       return fetch(url, { agent, ...merged })
     }
@@ -198,21 +208,7 @@ function setupProxy(options: SetProxyOptions) {
     if (httpsProxy) {
       const agent = new HttpsProxyAgent(httpsProxy)
       options.fetch = (url, opts) => {
-        let finalOpts = opts
-        const isGoogle = url.toString().includes('googleapis.com')
-
-        if (isGoogle && opts?.body) {
-          try {
-            const body = JSON.parse(opts.body.toString())
-            if (body.presence_penalty !== undefined)
-              delete body.presence_penalty
-            if (body.frequency_penalty !== undefined)
-              delete body.frequency_penalty
-            finalOpts = { ...opts, body: JSON.stringify(body) }
-          }
-          catch (e) {}
-        }
-
+        const finalOpts = { ...opts, body: opts?.body ? modifyBody(opts.body.toString()) : opts?.body }
         const merged = { ...finalOpts, headers: { ...(finalOpts as any)?.headers, ...openRouterHeaders } }
         return fetch(url, { agent, ...merged })
       }
@@ -220,23 +216,7 @@ function setupProxy(options: SetProxyOptions) {
   }
   else {
     options.fetch = (url, opts) => {
-      let finalOpts = opts
-      const isGoogle = url.toString().includes('googleapis.com')
-
-      // Strip OpenAI-specific penalties for Google Gemini
-      if (isGoogle && opts?.body) {
-        try {
-          const body = JSON.parse(opts.body.toString())
-          if (body.presence_penalty !== undefined || body.frequency_penalty !== undefined) {
-            delete body.presence_penalty
-            delete body.frequency_penalty
-            finalOpts = { ...opts, body: JSON.stringify(body) }
-          }
-        }
-        catch (e) {
-        }
-      }
-
+      const finalOpts = { ...opts, body: opts?.body ? modifyBody(opts.body.toString()) : opts?.body }
       const merged = { ...finalOpts, headers: { ...(finalOpts as any)?.headers, ...openRouterHeaders } }
       return fetch(url, { ...merged })
     }
