@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import { NModal, NTabPane, NTabs } from 'naive-ui'
 import General from './General.vue'
 import Advanced from './Advanced.vue'
-import About from './About.vue'
+import Credits from './Credits.vue'
 import { useAuthStore } from '@/store'
 import { SvgIcon } from '@/components/common'
 
@@ -36,7 +36,7 @@ const show = computed({
 </script>
 
 <template>
-  <NModal v-model:show="show" :auto-focus="false" preset="card" style="width: 95%; max-width: 640px">
+  <NModal v-model:show="show" :auto-focus="false" preset="card" style="width: 95%; max-maxWidth: 640px">
     <div>
       <NTabs v-model:value="active" type="line" animated>
         <NTabPane name="General" tab="General">
@@ -57,12 +57,12 @@ const show = computed({
             <Advanced />
           </div>
         </NTabPane>
-        <NTabPane name="Config" tab="Config">
+        <NTabPane name="Credits" tab="Credits">
           <template #tab>
-            <SvgIcon class="text-lg" icon="ri:list-settings-line" />
-            <span class="ml-2">{{ $t('setting.config') }}</span>
+            <SvgIcon class="text-lg" icon="ri:coin-line" />
+            <span class="ml-2">Credits & Limits</span>
           </template>
-          <About />
+          <Credits />
         </NTabPane>
       </NTabs>
     </div>

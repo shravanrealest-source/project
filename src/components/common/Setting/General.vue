@@ -26,6 +26,12 @@ const name = ref(userInfo.value.name ?? '')
 
 const description = ref(userInfo.value.description ?? '')
 
+const whatsappNumbers = ref(userInfo.value.whatsappNumbers ?? '')
+
+const businessEmail = ref(userInfo.value.businessEmail ?? '')
+
+const serviceCatalog = ref(userInfo.value.serviceCatalog ?? '')
+
 const language = computed({
   get() {
     return appStore.language
@@ -57,7 +63,7 @@ const languageOptions: { label: string; key: Language; value: Language }[] = [
   { label: 'English', key: 'en-US', value: 'en-US' },
   { label: 'Español', key: 'es-ES', value: 'es-ES' },
   { label: '한국어', key: 'ko-KR', value: 'ko-KR' },
-  { label: 'Русский язык', key: 'ru-RU', value: 'ru-RU' },
+  { label: 'Русский语言', key: 'ru-RU', value: 'ru-RU' },
   { label: 'Tiếng Việt', key: 'vi-VN', value: 'vi-VN' },
   { label: '简体中文', key: 'zh-CN', value: 'zh-CN' },
   { label: '繁體中文', key: 'zh-TW', value: 'zh-TW' },
@@ -130,7 +136,7 @@ function handleImportButtonClick(): void {
       <div class="flex items-center space-x-4">
         <span class="flex-shrink-0 w-[100px]">{{ $t('setting.avatarLink') }}</span>
         <div class="flex-1">
-          <NInput v-model:value="avatar" placeholder="" />
+          <NInput v-model:value="avatar" placeholder="Business Logo URL" />
         </div>
         <NButton size="tiny" text type="primary" @click="updateUserInfo({ avatar })">
           {{ $t('common.save') }}
@@ -139,7 +145,7 @@ function handleImportButtonClick(): void {
       <div class="flex items-center space-x-4">
         <span class="flex-shrink-0 w-[100px]">{{ $t('setting.name') }}</span>
         <div class="w-[200px]">
-          <NInput v-model:value="name" placeholder="" />
+          <NInput v-model:value="name" placeholder="Business Name" />
         </div>
         <NButton size="tiny" text type="primary" @click="updateUserInfo({ name })">
           {{ $t('common.save') }}
@@ -148,12 +154,49 @@ function handleImportButtonClick(): void {
       <div class="flex items-center space-x-4">
         <span class="flex-shrink-0 w-[100px]">{{ $t('setting.description') }}</span>
         <div class="flex-1">
-          <NInput v-model:value="description" placeholder="" />
+          <NInput v-model:value="description" placeholder="Business Bio/Context (Brand Voice)" />
         </div>
         <NButton size="tiny" text type="primary" @click="updateUserInfo({ description })">
           {{ $t('common.save') }}
         </NButton>
       </div>
+
+      <!-- New Business Identity Fields -->
+      <div class="flex items-center space-x-4">
+        <span class="flex-shrink-0 w-[100px]">{{ $t('setting.whatsappNumbers') }}</span>
+        <div class="flex-1">
+          <NInput v-model:value="whatsappNumbers" placeholder="e.g. +123456789, +987654321" />
+        </div>
+        <NButton size="tiny" text type="primary" @click="updateUserInfo({ whatsappNumbers })">
+          {{ $t('common.save') }}
+        </NButton>
+      </div>
+
+      <div class="flex items-center space-x-4">
+        <span class="flex-shrink-0 w-[100px]">{{ $t('setting.businessEmail') }}</span>
+        <div class="flex-1">
+          <NInput v-model:value="businessEmail" placeholder="Official Business Email" />
+        </div>
+        <NButton size="tiny" text type="primary" @click="updateUserInfo({ businessEmail })">
+          {{ $t('common.save') }}
+        </NButton>
+      </div>
+
+      <div class="flex items-start space-x-4">
+        <span class="flex-shrink-0 w-[100px] pt-2">{{ $t('setting.serviceCatalog') }}</span>
+        <div class="flex-1">
+          <NInput 
+            v-model:value="serviceCatalog" 
+            type="textarea" 
+            :autosize="{ minRows: 3, maxRows: 10 }" 
+            placeholder="Service Catalog / Menu Card (Critical for AI referencing)" 
+          />
+        </div>
+        <NButton size="tiny" text type="primary" class="pt-2" @click="updateUserInfo({ serviceCatalog })">
+          {{ $t('common.save') }}
+        </NButton>
+      </div>
+
       <div
         class="flex items-center space-x-4"
         :class="isMobile && 'items-start'"

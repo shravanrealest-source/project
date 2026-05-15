@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted } from 'vue'
-import { NButton, NInput, NSpace, useMessage, NTooltip, NSwitch } from 'naive-ui'
+import { NButton, NInput, NSpace, useMessage, NTooltip, NSwitch, NDivider, NCard, NGrid, NGi } from 'naive-ui'
 import { SvgIcon } from '@/components/common'
 import { fetchChatAPIProcess } from '@/api'
 import { useAppStore } from '@/store'
+import { ls } from '@/utils/storage'
 
 interface CTA {
   text: string
@@ -13,6 +14,7 @@ interface CTA {
 }
 
 interface TemplateVariation {
+  id?: string | number
   type: 'Promotional' | 'Urgent' | 'Educational'
   image: string
   body: string
@@ -20,12 +22,13 @@ interface TemplateVariation {
   isSaved?: boolean
 }
 
+const LOCAL_STORAGE_KEY = 'myTemplatesStorage'
 const ms = useMessage()
 const appStore = useAppStore()
 const loading = ref(false)
 const campaignGoal = ref('')
 const activeVariantIndex = ref(0)
-const editingIndex = ref<number | null>(null)
+const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const variations = ref<TemplateVariation[]>([
   {
@@ -33,32 +36,31 @@ const variations = ref<TemplateVariation[]>([
     image: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?q=80&w=1000&auto=format&fit=crop',
     body: 'Hey {{name}}! 🎧 Our Summer Sale is finally here. Grab your premium headphones at 20% off before they\'re gone!',
     ctas: [
-      { text: 'Shop 20% Off', type: 'Visit Website', url: 'https://example.com' },
-      { text: 'Chat with us', type: 'Quick Reply' }
-    ],
-    isSaved: false
+      { text: 'Shop 20% Off', type: 'Visit Website', url: 'https://headway.com/sale' },
+      { text: 'Chat with us', type: 'Quick Reply', url: 'action_chat' }
+    ]
   },
   {
     type: 'Urgent',
     image: 'https://images.unsplash.com/photo-1484704849700-f032a568e944?q=80&w=1000&auto=format&fit=crop',
     body: 'Last call {{name}}! 🚨 The 20% discount on all audio gear ends in 4 hours. Secure yours now!',
     ctas: [
-      { text: 'Claim Offer', type: 'Visit Website', url: 'https://example.com' },
-      { text: 'Contact Support', type: 'Quick Reply' }
-    ],
-    isSaved: false
+      { text: 'Claim Offer', type: 'Visit Website', url: 'https://headway.com/offer' },
+      { text: 'Contact Support', type: 'Quick Reply', url: 'action_support' }
+    ]
   },
   {
     type: 'Educational',
     image: 'https://images.unsplash.com/photo-1524678606370-a47ad25cb82a?q=80&w=1000&auto=format&fit=crop',
     body: 'Better sound, better focus {{name}}. 🧘‍♂️ Discover how our noise-canceling tech helps you stay in the zone.',
     ctas: [
-      { text: 'Learn More', type: 'Visit Website', url: 'https://example.com' },
-      { text: 'Ask a Question', type: 'Quick Reply' }
-    ],
-    isSaved: false
+      { text: 'Learn More', type: 'Visit Website', url: 'https://headway.com/blog' },
+      { text: 'Ask a Question', type: 'Quick Reply', url: 'action_question' }
+    ]
   }
 ])
+
+const savedTemplates = ref<TemplateVariation[]>([])
 
 const businessProfile = ref({
   name: 'Headway Inc.',
@@ -72,9 +74,27 @@ const previewText = computed(() => {
   return current.body.replace(/\{\{name\}\}/g, 'Saumya')
 })
 
+function triggerUpload() {
+  fileInputRef.value?.click()
+}
+
+function handleImageUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (input.files && input.files[0]) {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        variations.value[activeVariantIndex.value].image = e.target.result as string
+        ms.success('Creative uploaded successfully')
+      }
+    }
+    reader.readAsDataURL(input.files[0])
+  }
+}
+
 async function handleAIGenerate() {
   if (!campaignGoal.value) {
-    ms.warning('Enter a campaign goal first')
+    ms.warning('Goal required')
     return
   }
 
@@ -82,7 +102,7 @@ async function handleAIGenerate() {
   try {
     const prompt = `You are a direct-response copywriter. Goal: "${campaignGoal.value}". 
     Variations: Promotional, Urgent, Educational. Include hook, {{name}}, offer, and emoji.
-    Return JSON array of 3 objects: type, body, ctaText1, ctaText2.`
+    Return JSON array of 3 objects: type, body, ctaText1, ctaUrl1, ctaText2.`
 
     let aiResponse = ''
     await fetchChatAPIProcess({
@@ -113,12 +133,14 @@ async function handleAIGenerate() {
             variations.value[index].body = item.body
             const keywords = campaignGoal.value.split(' ').join(',')
             variations.value[index].image = `https://images.unsplash.com/featured/?${keywords}&sig=${timestamp + index}`
-            if (variations.value[index].ctas[0]) variations.value[index].ctas[0].text = item.ctaText1 || 'Visit Website'
-            if (variations.value[index].ctas[1]) variations.value[index].ctas[1].text = item.ctaText2 || 'Chat with us'
-            variations.value[index].isSaved = false
+            if (variations.value[index].ctas[0]) {
+              variations.value[index].ctas[0].text = item.ctaText1 || 'Visit Website'
+              variations.value[index].ctas[0].url = item.ctaUrl1 || 'https://example.com'
+            }
+            if (variations.value[index].ctas[1]) variations.value[index].ctas[1].text = item.ctaText2 || 'Chat'
           }
         })
-        ms.success('Studio: Fresh variations ready!')
+        ms.success('Variations ready')
       }
     }
   }
@@ -130,230 +152,194 @@ async function handleAIGenerate() {
   }
 }
 
-function openEdit(index: number) {
-  editingIndex.value = index
-  activeVariantIndex.value = index
-}
-
 function handleSave() {
-  if (activeVariantIndex.value !== null) {
-    variations.value[activeVariantIndex.value].isSaved = true
-    ms.success('Campaign draft saved successfully!')
-  }
+  const current = JSON.parse(JSON.stringify(variations.value[activeVariantIndex.value]))
+  current.id = Date.now()
+  savedTemplates.value.unshift(current)
+  saveToLocalStorage()
+  ms.success('Saved to Library')
 }
 
-// Collapsed sidebar on mount
+function saveToLocalStorage() {
+  ls.set(LOCAL_STORAGE_KEY, savedTemplates.value)
+}
+
+function loadFromLocalStorage() {
+  const data = ls.get(LOCAL_STORAGE_KEY)
+  if (data) savedTemplates.value = data
+}
+
+function deleteTemplate(id: string | number) {
+  savedTemplates.value = savedTemplates.value.filter(t => t.id !== id)
+  saveToLocalStorage()
+}
+
+function useTemplate(template: TemplateVariation) {
+  variations.value[activeVariantIndex.value] = JSON.parse(JSON.stringify(template))
+  ms.success('Loaded')
+}
+
 onMounted(() => {
   appStore.setSiderCollapsed(true)
+  loadFromLocalStorage()
 })
 
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#0a0a0c]/90 backdrop-blur-3xl text-white font-sans p-4 md:p-6 overflow-hidden flex flex-col">
+  <div class="min-h-screen bg-[#0f0f12] text-white font-sans p-4 overflow-x-hidden flex flex-col">
     
-    <!-- Header Studio Bar -->
-    <div class="max-w-[1600px] mx-auto w-full flex items-center justify-between gap-8 mb-8 h-12">
-      <div class="flex items-center gap-3">
-        <div class="w-8 h-8 bg-green-500 rounded-lg flex items-center justify-center text-black shadow-[0_0_15px_rgba(16,185,129,0.4)]">
-          <SvgIcon icon="ri:pencil-ruler-2-fill" class="text-lg" />
-        </div>
-        <h1 class="text-xl font-black tracking-tight uppercase">Campaign Studio</h1>
-      </div>
+    <!-- Compact Header -->
+    <div class="max-w-[1200px] mx-auto w-full flex items-center justify-between gap-4 mb-4 h-8">
+      <h1 class="text-xs font-black uppercase tracking-tighter">Campaign Studio</h1>
 
-      <!-- Slim Goal Bar -->
-      <div class="flex-1 max-w-md relative group">
+      <div class="flex-1 max-w-[260px] relative">
         <NInput 
           v-model:value="campaignGoal" 
-          placeholder="Describe your goal (e.g. Summer Sale)" 
-          class="!bg-white/5 !border-white/10 !rounded-full !h-10 !text-sm !pl-10 !pr-10 transition-all focus:!bg-white/10"
+          placeholder="Campaign Goal..." 
+          class="!bg-white/5 !border-white/10 !rounded-full !h-7 !text-[10px] !pl-7 !pr-7"
           @keyup.enter="handleAIGenerate"
         >
-          <template #prefix>
-            <SvgIcon icon="ri:search-2-line" class="text-neutral-500" />
-          </template>
+          <template #prefix><SvgIcon icon="ri:search-2-line" class="text-neutral-600 text-[10px]" /></template>
         </NInput>
-        <button 
-          @click="handleAIGenerate"
-          class="absolute right-3 top-1/2 -translate-y-1/2 text-green-500 hover:scale-110 transition-transform disabled:opacity-50"
-          :disabled="loading"
-        >
-          <SvgIcon v-if="loading" icon="ri:loader-4-line" class="animate-spin text-lg" />
-          <SvgIcon v-else icon="ri:magic-line" class="text-lg" />
+        <button @click="handleAIGenerate" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-green-500" :disabled="loading">
+          <SvgIcon v-if="loading" icon="ri:loader-4-line" class="animate-spin text-[10px]" />
+          <SvgIcon v-else icon="ri:magic-line" class="text-[10px]" />
         </button>
       </div>
 
-      <div class="flex gap-4">
-        <NButton type="primary" color="#10b981" round @click="handleSave" class="!px-8 !font-bold">Save All</NButton>
+      <div class="flex items-center gap-1.5">
+        <div class="w-1 h-1 rounded-full bg-green-500"></div>
+        <span class="text-[7px] font-bold text-neutral-600 uppercase">Online</span>
       </div>
     </div>
 
     <!-- Main Workspace -->
-    <div class="max-w-[1600px] mx-auto w-full flex-1 flex gap-12 overflow-hidden relative">
+    <div class="max-w-[1200px] mx-auto w-full flex-1 flex flex-col gap-4 pb-8">
       
-      <!-- Left side: Strategy & Refinement -->
-      <div class="w-[450px] flex flex-col gap-8 h-full overflow-y-auto no-scrollbar">
-        
-        <!-- Selection Ribbon -->
-        <div class="space-y-4">
-          <label class="text-[10px] font-black text-neutral-600 uppercase tracking-[0.3em]">Strategy Variants</label>
-          <div class="flex flex-col gap-3">
-            <div 
-              v-for="(v, index) in variations" 
-              :key="index"
-              class="relative bg-white/5 border border-white/5 rounded-2xl p-4 cursor-pointer transition-all duration-300 hover:bg-white/10 flex items-center gap-4 group"
-              :class="activeVariantIndex === index ? 'border-green-500/50 bg-white/10 shadow-lg' : ''"
-              @click="activeVariantIndex = index"
-            >
-              <div class="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-black/40">
-                <img :src="v.image" class="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" />
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="flex justify-between items-center mb-1">
-                  <span class="text-[9px] font-black uppercase text-neutral-400 tracking-wider">{{ v.type }}</span>
-                  <div class="flex items-center gap-2">
-                    <SvgIcon v-if="v.isSaved" icon="ri:checkbox-circle-fill" class="text-green-500 text-sm" />
-                    <NButton 
-                      circle 
-                      size="tiny" 
-                      @click.stop="openEdit(index)"
-                      class="!bg-white/5 !text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <template #icon><SvgIcon icon="ri:edit-line" /></template>
-                    </NButton>
-                  </div>
-                </div>
-                <p class="text-[11px] text-neutral-500 truncate italic">"{{ v.body }}"</p>
+      <div class="flex gap-4 overflow-hidden relative">
+        <!-- Sidebar: Fixed 320px -->
+        <div class="w-[320px] flex-shrink-0 flex flex-col gap-4">
+          <div class="bg-white/5 border border-white/10 rounded-2xl p-4 space-y-4 backdrop-blur-xl">
+            <div class="flex justify-between items-center">
+              <h3 class="text-[8px] font-black uppercase tracking-widest text-green-500">Refine Draft</h3>
+              <div class="flex gap-1">
+                <NButton v-for="(v, idx) in variations" :key="idx" size="tiny" round :type="activeVariantIndex === idx ? 'primary' : 'default'" :color="activeVariantIndex === idx ? '#10b981' : ''" @click="activeVariantIndex = idx" class="!text-[7px] !h-4 !px-1.5">V{{ idx+1 }}</NButton>
               </div>
             </div>
-          </div>
-        </div>
-
-        <!-- Refine Draft Section (Real-time Interactivity) -->
-        <div class="bg-white/5 border border-white/10 rounded-[2.5rem] p-8 backdrop-blur-3xl space-y-6">
-          <div class="flex justify-between items-center">
-            <h3 class="text-xs font-black uppercase tracking-widest text-green-500 flex items-center gap-2">
-              <SvgIcon icon="ri:quill-pen-line" />
-              Refine active draft
-            </h3>
-          </div>
-          
-          <div class="space-y-6">
-            <div class="space-y-3">
-              <label class="text-[9px] font-black text-neutral-600 uppercase tracking-widest">Message Copy</label>
-              <NInput 
-                v-model:value="variations[activeVariantIndex].body" 
-                type="textarea" 
-                :autosize="{ minRows: 4, maxRows: 8 }" 
-                class="!bg-black/20 !border-white/5 !text-[13px] !rounded-2xl !p-4" 
-              />
-            </div>
-
-            <div class="space-y-3">
-              <label class="text-[9px] font-black text-neutral-600 uppercase tracking-widest">Call to Actions</label>
-              <div class="grid grid-cols-1 gap-3">
-                <div v-for="(cta, ci) in variations[activeVariantIndex].ctas" :key="ci" class="bg-black/20 p-4 rounded-2xl border border-white/5 flex items-center gap-4">
-                  <div class="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-neutral-500">
-                    <SvgIcon :icon="cta.type === 'Visit Website' ? 'ri:global-line' : 'ri:chat-3-line'" />
-                  </div>
-                  <div class="flex-1">
-                    <p class="text-[8px] font-black text-neutral-600 uppercase mb-1">{{ cta.type }}</p>
-                    <NInput v-model:value="cta.text" size="small" class="!bg-transparent !border-none !text-[12px] !font-bold" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="pt-4 border-t border-white/5">
-            <NButton block type="primary" color="#10b981" @click="handleSave" class="!h-12 !rounded-2xl !font-black">
-              Save Variation
-            </NButton>
-          </div>
-        </div>
-      </div>
-
-      <!-- Right Column: Sticky Slim Preview -->
-      <div class="flex-1 flex flex-col items-center justify-center relative">
-        <div class="sticky top-0 h-full flex items-center justify-center">
-          
-          <!-- Mockup Container -->
-          <div class="relative transition-all duration-700">
             
-            <div class="absolute -top-10 left-1/2 -translate-x-1/2 flex items-center gap-2 whitespace-nowrap">
-              <div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
-              <span class="text-[9px] font-black text-neutral-600 uppercase tracking-[0.4em]">Live Production Mock</span>
+            <div class="space-y-4">
+              <!-- 1. Upload Creative (TOP) -->
+              <div class="space-y-1.5">
+                <label class="text-[6px] font-black text-neutral-600 uppercase">Upload Creative</label>
+                <div class="flex flex-col gap-2">
+                  <NButton block dashed @click="triggerUpload" class="!h-8 !rounded-lg !border-white/10 !text-[10px]">
+                    <template #icon><SvgIcon icon="ri:upload-cloud-2-line" /></template>
+                    Upload Creative
+                  </NButton>
+                  <input type="file" ref="fileInputRef" style="display: none" accept="image/*" @change="handleImageUpload" />
+                  <div v-if="variations[activeVariantIndex].image" class="w-full aspect-[16/9] rounded-lg overflow-hidden border border-white/10 bg-black/40">
+                    <img :src="variations[activeVariantIndex].image" class="w-full h-full object-cover" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. Message Copy -->
+              <div class="space-y-1.5">
+                <label class="text-[6px] font-black text-neutral-600 uppercase">Message Copy</label>
+                <NInput v-model:value="variations[activeVariantIndex].body" type="textarea" :autosize="{ minRows: 3, maxRows: 6 }" class="!bg-black/20 !border-white/5 !text-[10px] !rounded-lg !p-2" />
+              </div>
+
+              <!-- 3. Call to Actions -->
+              <div class="space-y-1.5">
+                <label class="text-[6px] font-black text-neutral-600 uppercase">Call to Actions</label>
+                <div class="grid grid-cols-1 gap-2">
+                  <div v-for="(cta, ci) in variations[activeVariantIndex].ctas" :key="ci" class="bg-black/20 p-2.5 rounded-xl border border-white/5 flex flex-col gap-2">
+                    <div class="flex items-center gap-2">
+                      <SvgIcon :icon="cta.type === 'Visit Website' ? 'ri:global-line' : 'ri:chat-3-line'" class="text-[10px] text-neutral-500" />
+                      <NInput v-model:value="cta.text" size="tiny" class="!bg-transparent !border-none !text-[10px] !font-bold" placeholder="Label" />
+                    </div>
+                    <!-- URL/Action input for ALL types -->
+                    <div>
+                      <NInput 
+                        v-model:value="cta.url" 
+                        size="tiny" 
+                        placeholder="URL or Action Payload" 
+                        class="!bg-black/40 !border-white/5 !rounded-md !text-[8px] !h-5" 
+                      >
+                        <template #prefix><SvgIcon icon="ri:link" class="text-[7px] text-neutral-600" /></template>
+                      </NInput>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <!-- Slim iPhone Frame (Width reduced to 290px) -->
-            <div class="relative w-[290px] h-[580px] bg-[#0c0c0c] rounded-[50px] p-[8px] shadow-[0_50px_100px_-20px_rgba(0,0,0,0.9)] border border-white/5 ring-1 ring-white/10">
-              
-              <!-- Inner content with scale(0.8) for crisp text -->
-              <div class="relative w-full h-full bg-[#efe7de] rounded-[42px] overflow-hidden flex flex-col transform scale-[1] origin-top h-[100%]">
-                
-                <!-- Dynamic Island -->
-                <div class="absolute top-2 left-1/2 -translate-x-1/2 w-24 h-7 bg-black rounded-full z-[100]"></div>
+            <NButton block type="primary" color="#10b981" @click="handleSave" class="!h-8 !rounded-lg !font-bold !text-[9px]">Save to Library</NButton>
+          </div>
+        </div>
 
-                <!-- Chat Header -->
-                <div class="bg-white/95 backdrop-blur-xl px-4 pt-10 pb-3 flex items-center gap-3 border-b border-black/5 z-50">
-                  <div class="w-8 h-8 rounded-full bg-black flex items-center justify-center overflow-hidden flex-shrink-0 shadow-lg">
-                    <img :src="businessProfile.avatar" class="w-full h-full object-contain p-1" />
-                  </div>
-                  <div class="flex flex-col">
-                    <div class="flex items-center gap-1">
-                      <span class="text-[13px] font-bold text-[#111b21]">{{ businessProfile.name }}</span>
-                      <SvgIcon v-if="businessProfile.isVerified" icon="ri:checkbox-circle-fill" class="text-[#3b82f6] text-[13px]" />
-                    </div>
-                    <span class="text-[8px] text-[#00a884] font-black uppercase tracking-tighter">online</span>
-                  </div>
-                </div>
+        <!-- Preview: Center & Scaled -->
+        <div class="flex-1 flex flex-col items-center">
+          <div class="sticky top-0 h-full flex flex-col items-center transform scale-[0.85] origin-top">
+            <div class="relative">
+              <span class="absolute -top-6 left-1/2 -translate-x-1/2 text-[7px] font-black text-neutral-600 uppercase tracking-widest">Mockup</span>
 
-                <!-- Chat Stream -->
-                <div class="flex-1 relative overflow-hidden whatsapp-doodle-bg p-3 flex flex-col">
+              <!-- iPhone frame: 270px wide -->
+              <div class="relative w-[270px] h-[540px] bg-black rounded-[40px] p-1.5 border border-white/5 shadow-2xl">
+                <div class="relative w-full h-full bg-[#efe7de] rounded-[34px] overflow-hidden flex flex-col">
                   
-                  <div class="self-center bg-white/70 backdrop-blur-md px-3 py-1 rounded-full text-[8px] text-[#54656f] font-black mb-4 shadow-sm border border-black/5 uppercase">
-                    Today
+                  <div class="absolute top-1.5 left-1/2 -translate-x-1/2 w-20 h-4.5 bg-black rounded-full z-[100]"></div>
+
+                  <!-- Header -->
+                  <div class="bg-white/95 px-3 pt-7 pb-2.5 flex items-center gap-2.5 border-b border-black/5 z-40">
+                    <div class="w-6 h-6 rounded-full bg-black overflow-hidden flex-shrink-0"><img :src="businessProfile.avatar" class="p-1" /></div>
+                    <div class="flex flex-col">
+                      <span class="text-[10px] font-bold text-[#111b21] leading-none">{{ businessProfile.name }}</span>
+                      <span class="text-[6px] text-[#00a884] font-black uppercase">online</span>
+                    </div>
                   </div>
 
-                  <!-- The Message Bubble (Real-time Sync) -->
-                  <div class="self-start max-w-[94%] bg-white rounded-[20px] rounded-tl-none shadow-[0_1px_2px_rgba(0,0,0,0.15)] overflow-hidden transition-all duration-300">
-                    <div class="p-1 pb-0">
-                      <img :src="variations[activeVariantIndex].image" class="w-full aspect-[1.8] object-cover rounded-[16px]" />
-                    </div>
-                    
-                    <div class="px-4 py-4 relative">
-                      <p class="text-[12.5px] leading-[1.5] text-[#111b21] font-medium whitespace-pre-wrap">
-                        {{ previewText }}
-                      </p>
-                      <div class="flex justify-end items-center gap-1 mt-2">
-                        <span class="text-[8px] text-[#667781] font-black uppercase opacity-40">10:43 AM</span>
+                  <!-- Bubble Layout: Image -> Text -> Buttons -->
+                  <div class="flex-1 whatsapp-doodle-bg p-3 flex flex-col">
+                    <div class="self-center bg-white/70 px-3 py-0.5 rounded-full text-[6px] text-[#54656f] font-black mb-3.5 uppercase">Today</div>
+
+                    <div class="self-start max-w-[92%] bg-white rounded-2xl rounded-tl-none shadow-sm overflow-hidden flex flex-col">
+                      
+                      <!-- 1. The Creative (Image sits at the top) -->
+                      <div class="p-1 pb-0">
+                        <img :src="variations[activeVariantIndex].image" class="w-full aspect-[16/9] object-cover rounded-t-2xl rounded-b-md shadow-inner" />
+                      </div>
+
+                      <!-- 2. The Body (Below Image) -->
+                      <div class="px-3.5 py-3">
+                        <p class="text-[11px] leading-[1.55] text-[#111b21] font-medium whitespace-pre-wrap">
+                          {{ previewText }}
+                        </p>
+                        <div class="flex justify-end mt-1.5"><span class="text-[6px] text-[#667781] font-black uppercase opacity-30">10:43 AM</span></div>
+                      </div>
+
+                      <!-- 3. The Actions -->
+                      <div class="border-t border-[#f0f2f5] divide-y divide-[#f0f2f5]">
+                        <a 
+                          v-for="(cta, ci) in variations[activeVariantIndex].ctas" 
+                          :key="ci" 
+                          :href="(cta.type === 'Visit Website' || cta.type === 'Quick Reply') ? cta.url : 'javascript:void(0)'"
+                          target="_blank"
+                          class="py-2.5 px-3 flex items-center justify-center gap-2 text-[#00a884] font-bold text-[11px] hover:bg-slate-50 transition-colors no-underline"
+                        >
+                          <SvgIcon :icon="cta.type === 'Visit Website' ? 'ri:external-link-line' : 'ri:chat-3-line'" class="text-xs" />
+                          {{ cta.text }}
+                        </a>
                       </div>
                     </div>
+                  </div>
 
-                    <!-- CTA Buttons (Real-time Sync) -->
-                    <div class="border-t border-[#f0f2f5] divide-y divide-[#f0f2f5] pb-1">
-                      <div 
-                        v-for="(cta, ci) in variations[activeVariantIndex].ctas" 
-                        :key="ci" 
-                        class="py-3 px-4 flex items-center justify-center gap-2.5 text-[#00a884] font-black text-[12px] hover:bg-slate-50 transition-colors"
-                      >
-                        <SvgIcon :icon="cta.type === 'Visit Website' ? 'ri:external-link-line' : 'ri:chat-3-line'" class="text-lg" />
-                        {{ cta.text }}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <!-- Input Mock -->
-                <div class="bg-white p-3 flex items-center gap-3 z-50 border-t border-black/5">
-                  <div class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-300">
-                    <SvgIcon icon="ri:add-line" class="text-xl" />
-                  </div>
-                  <div class="flex-1 bg-slate-50 h-9 rounded-3xl px-4 flex items-center text-slate-200 font-bold text-[10px] border border-black/5 uppercase tracking-widest">
-                    Message
-                  </div>
-                  <div class="w-9 h-9 rounded-full bg-[#00a884] flex items-center justify-center text-white shadow-lg">
-                    <SvgIcon icon="ri:mic-line" class="text-lg" />
+                  <!-- Footer -->
+                  <div class="bg-white p-2 flex items-center gap-2 border-t border-black/5">
+                    <div class="w-5 h-5 rounded-full bg-slate-50 flex items-center justify-center text-slate-300"><SvgIcon icon="ri:add-line" /></div>
+                    <div class="flex-1 bg-slate-50 h-6 rounded-full px-3 text-[7px] text-slate-200 uppercase font-black tracking-widest leading-6">Message</div>
+                    <div class="w-6 h-6 rounded-full bg-[#00a884] flex items-center justify-center text-white shadow-md"><SvgIcon icon="ri:mic-line" class="text-xs" /></div>
                   </div>
                 </div>
               </div>
@@ -361,6 +347,26 @@ onMounted(() => {
           </div>
         </div>
       </div>
+
+      <!-- Library Grid -->
+      <div class="space-y-3">
+        <h2 class="text-[10px] font-black tracking-tight uppercase border-b border-white/5 pb-2">My Library</h2>
+        <NGrid :x-gap="8" :y-gap="8" :cols="6">
+          <NGi v-for="t in savedTemplates" :key="t.id">
+            <div class="bg-white/5 border border-white/10 rounded-lg overflow-hidden group hover:border-green-500/20 transition-all duration-300">
+              <div class="aspect-[16/9] relative bg-black/20 overflow-hidden">
+                <img :src="t.image" class="w-full h-full object-cover" />
+                <div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 flex flex-col p-1.5 gap-1 justify-center">
+                  <NButton block type="primary" color="#10b981" size="tiny" @click="useTemplate(t)" class="!text-[8px] !h-4">Load</NButton>
+                  <NButton block ghost size="tiny" @click="deleteTemplate(t.id!)" class="!text-red-500 !text-[8px] !h-4">Del</NButton>
+                </div>
+              </div>
+              <div class="p-1.5"><p class="text-[8px] text-neutral-500 line-clamp-1 leading-none">{{ t.body }}</p></div>
+            </div>
+          </NGi>
+        </NGrid>
+      </div>
+
     </div>
   </div>
 </template>
@@ -368,34 +374,17 @@ onMounted(() => {
 <style scoped>
 .whatsapp-doodle-bg {
   background-image: url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png');
-  background-size: 500px;
+  background-size: 300px;
   background-blend-mode: soft-light;
   background-color: #efe7de;
 }
 
-.no-scrollbar::-webkit-scrollbar {
-  display: none;
-}
-.no-scrollbar {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
-}
-
-@keyframes slide-in {
-  from { transform: translateX(-20px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-.animate-in {
-  animation: slide-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-}
-
 :deep(.n-input) {
   --n-text-color: #fff !important;
-  --n-placeholder-color: #444 !important;
+  --n-placeholder-color: #333 !important;
+  --n-font-size: 10px !important;
 }
 
-/* Ensure sticky columns work in flex layout */
 .sticky {
   position: -webkit-sticky;
   position: sticky;

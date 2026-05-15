@@ -6,13 +6,23 @@ export interface SettingsState {
   systemMessage: string
   temperature: number
   top_p: number
+  contextLength: number
+  totalCredits: number
+  usedCreditsToday: number
+  dailyMessageLimit: number
+  costPerMessage: number
 }
 
 export function defaultSetting(): SettingsState {
   return {
-    systemMessage: 'You are ChatGPT, a large language model trained by OpenAI. Follow the user\'s instructions carefully. Respond using markdown.',
+    systemMessage: 'Act as a friendly marketing assistant for a Real Estate business. Focus on engagement and conversion.',
     temperature: 0.8,
     top_p: 1,
+    contextLength: 5,
+    totalCredits: 1000,
+    usedCreditsToday: 0,
+    dailyMessageLimit: 500,
+    costPerMessage: 1,
   }
 }
 
